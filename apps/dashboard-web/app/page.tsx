@@ -1,0 +1,1 @@
+import Link from 'next/link'; export default function Home(){return <main style={{maxWidth:680,margin:'80px auto',padding:24}}><h1>PondokPay</h1><p>Platform pembayaran pesantren berbasis RFID.</p><Link href="/login">Masuk ke Dashboard</Link></main>}

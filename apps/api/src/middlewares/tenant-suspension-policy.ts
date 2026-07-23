@@ -1,0 +1,2 @@
+/** The suspension allow-list is intentionally closed: adding an endpoint requires an explicit policy decision. */
+export function isSuspensionException(method:string,url:string):boolean {const pathname=url.split('?')[0];return (method==='POST'&&pathname==='/v1/auth/login')||(method==='POST'&&/^\/v1\/platform-invoices\/[^/]+\/pay$/.test(pathname))||(method==='GET'&&/^\/v1\/tenants\/[^/]+\/platform-invoices$/.test(pathname));}

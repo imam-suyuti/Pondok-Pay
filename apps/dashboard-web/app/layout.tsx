@@ -1,0 +1,1 @@
+import type { Metadata } from 'next'; export const metadata:Metadata={title:'PondokPay',description:'Dashboard pembayaran pesantren'}; export default function RootLayout({children}:{children:React.ReactNode}){return <html lang="id"><body style={{fontFamily:'Arial, sans-serif',margin:'0',background:'#f7faf9'}}>{children}</body></html>}

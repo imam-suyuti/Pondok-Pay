@@ -1,0 +1,3 @@
+import {describe,expect,it} from 'vitest';import {readFileSync} from 'node:fs';import {resolve} from 'node:path';
+const sql=readFileSync(resolve(import.meta.dirname,'../prisma/migrations/20260722220000_card_session_uniqueness/migration.sql'),'utf8');
+describe('card session uniqueness constraints',()=>{it('enforces one active registration and PIN reset session per card',()=>{expect(sql).toContain('uq_open_card_registration_session_uid');expect(sql).toContain("status IN ('SCANNED','SANTRI_SELECTED')");expect(sql).toContain('uq_open_card_pin_reset_session_card');expect(sql).toContain("status IN ('SCANNED','IDENTITY_CONFIRMED')");});});

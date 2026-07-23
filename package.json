@@ -1,0 +1,5 @@
+{
+  "name":"pondokpay", "private":true, "workspaces":["apps/*","packages/*"],
+  "scripts":{"build":"npm run build --workspaces","lint":"npm run lint --workspaces","test":"npm run test --workspace=@pondokpay/api"},
+  "engines":{"node":">=22"}
+}

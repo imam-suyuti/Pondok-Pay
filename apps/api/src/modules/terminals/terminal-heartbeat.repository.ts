@@ -1,0 +1,2 @@
+import {prisma} from '../../db/client.js';import {withTenant} from '../../db/client.js';import type {TerminalHeartbeatRepository} from './terminal-heartbeat.service.js';
+export class PrismaTerminalHeartbeatRepository implements TerminalHeartbeatRepository {async recordHeartbeat(tenantId:string,terminalId:string,at:Date){await withTenant(tenantId,tx=>tx.terminal.update({where:{id:terminalId},data:{lastHeartbeatAt:at}}));}}

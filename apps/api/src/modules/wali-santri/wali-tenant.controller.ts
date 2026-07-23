@@ -1,0 +1,6 @@
+import type {FastifyInstance} from 'fastify';import {z} from 'zod';import {requireRoles} from '../../middlewares/auth-guard.js';
+export interface WaliTenantListPort {listAvailableTenants(waliId:string):Promise<{id:string;name:string}[]>;}
+export interface WaliTenantSelector {selectTenant(waliId:string,tenantId:string):Promise<{tenantId:string}>;}
+export interface WaliTenantTokenIssuer {issueWaliTenantAccessToken(waliId:string,tenantId:string):string;}
+const body=z.object({tenant_id:z.string().uuid()});
+export async function registerWaliTenantController(app:FastifyInstance,deps:{selector:WaliTenantSelector;tenants:WaliTenantListPort;tokens:WaliTenantTokenIssuer}){app.get('/v1/auth/wali/tenants',{preHandler:requireRoles('WALI_SANTRI')},async req=>({success:true,data:{items:await deps.tenants.listAvailableTenants(req.auth!.sub)},meta:{requestId:req.id,timestamp:new Date().toISOString()}}));app.post('/v1/auth/wali/select-tenant',{preHandler:requireRoles('WALI_SANTRI')},async req=>{const {tenant_id}=body.parse(req.body),selection=await deps.selector.selectTenant(req.auth!.sub,tenant_id);const accessToken=deps.tokens.issueWaliTenantAccessToken(req.auth!.sub,selection.tenantId);return {success:true,data:{access_token:accessToken,tenant_id:selection.tenantId},meta:{requestId:req.id,timestamp:new Date().toISOString()}};});}

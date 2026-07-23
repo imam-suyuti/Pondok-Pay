@@ -1,0 +1,3 @@
+import {describe,expect,it} from 'vitest';import {TerminalHeartbeatService,type TerminalHeartbeatRepository} from '../src/modules/terminals/terminal-heartbeat.service.js';
+class Repo implements TerminalHeartbeatRepository {id='';at?:Date;async recordHeartbeat(_tenant:string,id:string,at:Date){this.id=id;this.at=at}}
+describe('terminal heartbeat',()=>{it('records liveness timestamp for authenticated terminal',async()=>{const repo=new Repo(),now=new Date('2026-07-22T00:00:00Z'),result=await new TerminalHeartbeatService(repo).heartbeat('tenant','terminal',now);expect(repo).toMatchObject({id:'terminal',at:now});expect(result).toEqual({status:'ACTIVE',lastHeartbeatAt:now});});});
