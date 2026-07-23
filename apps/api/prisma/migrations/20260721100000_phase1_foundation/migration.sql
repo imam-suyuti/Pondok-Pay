@@ -1,0 +1,22 @@
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+CREATE TYPE "TenantStatus" AS ENUM ('ACTIVE','SUSPENDED');
+CREATE TYPE "StaffRole" AS ENUM ('SUPER_ADMIN','ADMIN_PESANTREN','OPERATOR_MERCHANT');
+CREATE TYPE "UserStatus" AS ENUM ('ACTIVE','INACTIVE');
+CREATE TYPE "RelationStatus" AS ENUM ('ACTIVE','REVOKED');
+CREATE TABLE tenants (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), name VARCHAR(150) NOT NULL, slug VARCHAR(60) UNIQUE NOT NULL, status "TenantStatus" NOT NULL DEFAULT 'ACTIVE', subscription_plan VARCHAR(30) NOT NULL DEFAULT 'BASIC', default_daily_limit NUMERIC(15,2) NOT NULL DEFAULT 50000, cash_topup_limit_per_tx NUMERIC(15,2) NOT NULL DEFAULT 500000, cash_withdrawal_limit_per_tx NUMERIC(15,2) NOT NULL DEFAULT 200000, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), updated_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE TABLE staff_users (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID REFERENCES tenants(id), full_name VARCHAR(150) NOT NULL, email VARCHAR(150) UNIQUE NOT NULL, phone VARCHAR(20), password_hash TEXT NOT NULL, role "StaffRole" NOT NULL, merchant_scope UUID[] NOT NULL DEFAULT '{}', status "UserStatus" NOT NULL DEFAULT 'ACTIVE', last_login_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), CHECK ((role='SUPER_ADMIN' AND tenant_id IS NULL) OR (role <> 'SUPER_ADMIN' AND tenant_id IS NOT NULL)));
+CREATE TABLE wali_santri (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), full_name VARCHAR(150) NOT NULL, phone VARCHAR(20) UNIQUE NOT NULL, email VARCHAR(150) UNIQUE, password_hash TEXT NOT NULL, status "UserStatus" NOT NULL DEFAULT 'ACTIVE', created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE TABLE santri (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID NOT NULL REFERENCES tenants(id), full_name VARCHAR(150) NOT NULL, status "UserStatus" NOT NULL DEFAULT 'ACTIVE');
+CREATE TABLE wali_santri_relations (wali_id UUID NOT NULL REFERENCES wali_santri(id), santri_id UUID NOT NULL UNIQUE REFERENCES santri(id), relation_type VARCHAR(20) NOT NULL DEFAULT 'PARENT', status "RelationStatus" NOT NULL DEFAULT 'ACTIVE', PRIMARY KEY(wali_id,santri_id));
+CREATE TABLE role_permissions (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), role VARCHAR(30) NOT NULL, resource VARCHAR(60) NOT NULL, scope VARCHAR(20) NOT NULL DEFAULT 'FULL', constraint_json JSONB, UNIQUE(role,resource));
+CREATE TABLE refresh_tokens (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), token_hash TEXT UNIQUE NOT NULL, staff_user_id UUID REFERENCES staff_users(id), wali_santri_id UUID REFERENCES wali_santri(id), expires_at TIMESTAMPTZ NOT NULL, revoked_at TIMESTAMPTZ, replaced_by_id UUID, created_at TIMESTAMPTZ NOT NULL DEFAULT now(), CHECK (num_nonnulls(staff_user_id, wali_santri_id)=1));
+CREATE TABLE audit_logs (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), tenant_id UUID REFERENCES tenants(id), actor_type VARCHAR(20) NOT NULL, actor_id UUID, action VARCHAR(80) NOT NULL, resource_type VARCHAR(50), resource_id UUID, ip_address INET, metadata JSONB, created_at TIMESTAMPTZ NOT NULL DEFAULT now());
+-- Tenant-bound rows require transaction-local app.current_tenant_id. FORCE applies policies to table owners too.
+ALTER TABLE staff_users ENABLE ROW LEVEL SECURITY; ALTER TABLE staff_users FORCE ROW LEVEL SECURITY;
+ALTER TABLE santri ENABLE ROW LEVEL SECURITY; ALTER TABLE santri FORCE ROW LEVEL SECURITY;
+ALTER TABLE audit_logs ENABLE ROW LEVEL SECURITY; ALTER TABLE audit_logs FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation_staff_users ON staff_users USING (tenant_id = current_setting('app.current_tenant_id', true)::uuid) WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::uuid);
+CREATE POLICY tenant_isolation_santri ON santri USING (tenant_id = current_setting('app.current_tenant_id', true)::uuid) WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::uuid);
+CREATE POLICY tenant_isolation_audit_logs ON audit_logs USING (tenant_id = current_setting('app.current_tenant_id', true)::uuid) WITH CHECK (tenant_id = current_setting('app.current_tenant_id', true)::uuid);
+INSERT INTO role_permissions(role,resource,scope) VALUES
+('SUPER_ADMIN','tenants','FULL'),('SUPER_ADMIN','platform_billing','FULL'),('ADMIN_PESANTREN','santri','FULL'),('ADMIN_PESANTREN','merchants','FULL'),('ADMIN_PESANTREN','cards','FULL'),('WALI_SANTRI','santri','OWN'),('WALI_SANTRI','topups','OWN'),('OPERATOR_MERCHANT','terminal_transactions','LIMITED');

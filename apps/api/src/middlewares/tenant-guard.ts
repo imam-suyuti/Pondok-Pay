@@ -1,0 +1,3 @@
+import type { FastifyRequest } from 'fastify'; import { prisma } from '../db/client.js'; import { AppError } from '../shared/errors.js';
+import { isSuspensionException } from './tenant-suspension-policy.js';
+export async function tenantGuard(req:FastifyRequest){const tenantId=req.auth?.tenant_id;if(!tenantId)return;const tenant=await prisma.tenant.findUnique({where:{id:tenantId}});if(!tenant)throw new AppError('FORBIDDEN','Tenant tidak ditemukan.',403);if(tenant.status==='SUSPENDED'&&!isSuspensionException(req.method,req.url))throw new AppError('TENANT_SUSPENDED','Sistem sedang tidak tersedia.',403);}

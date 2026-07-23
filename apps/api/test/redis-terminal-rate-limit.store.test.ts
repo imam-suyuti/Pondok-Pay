@@ -1,0 +1,2 @@
+import {describe,expect,it} from 'vitest';import {RedisTerminalRateLimitStore} from '../src/middlewares/redis-terminal-rate-limit.store.js';
+describe('Redis terminal rate limit store',()=>{it('sets TTL only when creating a new counter window',async()=>{const calls:string[]=[];const redis={incr:async()=>1,expire:async()=>{calls.push('expire')}} as any;expect(await new RedisTerminalRateLimitStore(redis).increment('key',60)).toBe(1);expect(calls).toEqual(['expire']);});});

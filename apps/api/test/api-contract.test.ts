@@ -1,0 +1,3 @@
+import { describe, expect, it } from 'vitest';
+import { apiError, apiSuccess } from '@pondokpay/shared-types';
+describe('standard API response contract',()=>{it('wraps successful responses with mandatory meta',()=>{const output=apiSuccess({id:'1'},'request-1');expect(output).toMatchObject({success:true,data:{id:'1'},meta:{requestId:'request-1'}});expect(output.meta.timestamp).toBeTruthy();});it('wraps failures with code, details, and meta',()=>{expect(apiError('UNAUTHORIZED','Autentikasi diperlukan.','request-1')).toMatchObject({success:false,error:{code:'UNAUTHORIZED',details:{}},meta:{requestId:'request-1'}});});});

@@ -1,0 +1,2 @@
+import jwt from 'jsonwebtoken';import {env} from '../../config/env.js';import type {JwtClaims} from '@pondokpay/shared-types';
+export function issueWaliTenantAccessToken(waliId:string,tenantId:string){const claims:JwtClaims={sub:waliId,role:'WALI_SANTRI',tenant_id:tenantId,merchant_scope:[]};return jwt.sign(claims,env.JWT_ACCESS_SECRET,{expiresIn:env.JWT_ACCESS_EXPIRY as jwt.SignOptions['expiresIn']});}

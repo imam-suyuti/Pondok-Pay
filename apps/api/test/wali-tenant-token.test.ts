@@ -1,0 +1,2 @@
+import {describe,expect,it} from 'vitest';import jwt from 'jsonwebtoken';import {issueWaliTenantAccessToken} from '../src/modules/auth/auth-token.service.js';
+describe('Wali tenant access token',()=>{it('scopes a refreshed Wali access token to selected tenant',()=>{const token=issueWaliTenantAccessToken('wali-id','11111111-1111-4111-8111-111111111111');expect(jwt.decode(token)).toMatchObject({sub:'wali-id',role:'WALI_SANTRI',tenant_id:'11111111-1111-4111-8111-111111111111'});});});

@@ -1,0 +1,71 @@
+generator client { provider = "prisma-client-js" }
+datasource db { provider = "postgresql"; url = env("DATABASE_URL") }
+
+enum TenantStatus { ACTIVE SUSPENDED }
+enum StaffRole { SUPER_ADMIN ADMIN_PESANTREN OPERATOR_MERCHANT }
+enum UserStatus { ACTIVE INACTIVE }
+enum RelationStatus { ACTIVE REVOKED }
+model Tenant {
+ id String @id @default(uuid()) @db.Uuid
+ name String @db.VarChar(150)
+ slug String @unique @db.VarChar(60)
+ status TenantStatus @default(ACTIVE)
+ subscriptionPlan String @default("BASIC") @map("subscription_plan") @db.VarChar(30)
+ defaultDailyLimit Decimal @default(50000) @map("default_daily_limit") @db.Decimal(15,2)
+ cashTopupLimitPerTx Decimal @default(500000) @map("cash_topup_limit_per_tx") @db.Decimal(15,2)
+ cashWithdrawalLimitPerTx Decimal @default(200000) @map("cash_withdrawal_limit_per_tx") @db.Decimal(15,2)
+ createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+ updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+ staffUsers StaffUser[]
+ santri Santri[]
+ auditLogs AuditLog[]
+ @@map("tenants")
+}
+model StaffUser {
+ id String @id @default(uuid()) @db.Uuid
+ tenantId String? @map("tenant_id") @db.Uuid
+ fullName String @map("full_name") @db.VarChar(150)
+ email String @unique @db.VarChar(150)
+ phone String? @db.VarChar(20)
+ passwordHash String @map("password_hash")
+ actionPinHash String? @map("action_pin_hash")
+ role StaffRole
+ merchantScope String[] @default([]) @map("merchant_scope") @db.Uuid
+ status UserStatus @default(ACTIVE)
+ lastLoginAt DateTime? @map("last_login_at") @db.Timestamptz(6)
+ createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+ tenant Tenant? @relation(fields:[tenantId], references:[id])
+ refreshTokens RefreshToken[]
+ @@map("staff_users")
+}
+model WaliSantri {
+ id String @id @default(uuid()) @db.Uuid
+ fullName String @map("full_name") @db.VarChar(150)
+ phone String @unique @db.VarChar(20)
+ email String? @unique @db.VarChar(150)
+ passwordHash String @map("password_hash")
+ status UserStatus @default(ACTIVE)
+ createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+ relations WaliSantriRelation[]
+ refreshTokens RefreshToken[]
+ @@map("wali_santri")
+}
+model Santri { id String @id @default(uuid()) @db.Uuid; tenantId String @map("tenant_id") @db.Uuid; fullName String @map("full_name") @db.VarChar(150); nis String? @db.VarChar(30); dormitory String? @db.VarChar(60); status UserStatus @default(ACTIVE); tenant Tenant @relation(fields:[tenantId], references:[id]); waliRelations WaliSantriRelation[]; @@map("santri") }
+model WaliSantriRelation { waliId String @map("wali_id") @db.Uuid; santriId String @unique @map("santri_id") @db.Uuid; relationType String @default("PARENT") @map("relation_type"); status RelationStatus @default(ACTIVE); wali WaliSantri @relation(fields:[waliId],references:[id]); santri Santri @relation(fields:[santriId],references:[id]); @@id([waliId,santriId]); @@map("wali_santri_relations") }
+model RolePermission { id String @id @default(uuid()) @db.Uuid; role String @db.VarChar(30); resource String @db.VarChar(60); scope String @default("FULL") @db.VarChar(20); constraintJson Json? @map("constraint_json"); @@unique([role,resource]); @@map("role_permissions") }
+model RefreshToken { id String @id @default(uuid()) @db.Uuid; tokenHash String @unique @map("token_hash"); staffUserId String? @map("staff_user_id") @db.Uuid; waliSantriId String? @map("wali_santri_id") @db.Uuid; expiresAt DateTime @map("expires_at") @db.Timestamptz(6); revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6); replacedById String? @map("replaced_by_id") @db.Uuid; createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6); staffUser StaffUser? @relation(fields:[staffUserId],references:[id]); waliSantri WaliSantri? @relation(fields:[waliSantriId],references:[id]); @@map("refresh_tokens") }
+model AuditLog { id String @id @default(uuid()) @db.Uuid; tenantId String? @map("tenant_id") @db.Uuid; actorType String @map("actor_type"); actorId String? @map("actor_id") @db.Uuid; action String @db.VarChar(80); resourceType String? @map("resource_type") @db.VarChar(50); resourceId String? @map("resource_id") @db.Uuid; ipAddress String? @map("ip_address") @db.Inet; metadata Json?; createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6); tenant Tenant? @relation(fields:[tenantId],references:[id]); @@map("audit_logs") }
+
+// Phase 2 ledger core. Query access is implemented only through module repositories.
+model Card { id String @id @default(uuid()) @db.Uuid; tenantId String @map("tenant_id") @db.Uuid; santriId String @map("santri_id") @db.Uuid; cardUid String @map("card_uid") @db.VarChar(40); pinHash String @map("pin_hash"); status String @default("ACTIVE") @db.VarChar(20); deactivationReason String? @map("deactivation_reason") @db.VarChar(30); deactivatedAt DateTime? @map("deactivated_at") @db.Timestamptz(6); consecutiveNegativeDebits Int @default(0) @map("consecutive_negative_debits"); issuedAt DateTime @default(now()) @map("issued_at") @db.Timestamptz(6); replacedFromCardId String? @map("replaced_from_card_id") @db.Uuid; @@unique([tenantId,cardUid]); @@map("cards") }
+model Merchant { id String @id @default(uuid()) @db.Uuid; tenantId String @map("tenant_id") @db.Uuid; name String @db.VarChar(150); category String? @db.VarChar(50); status String @default("ACTIVE") @db.VarChar(20); deactivationReason String? @map("deactivation_reason") @db.VarChar(30); deactivatedAt DateTime? @map("deactivated_at") @db.Timestamptz(6); hasUnsettledReceivable Boolean @default(false) @map("has_unsettled_receivable"); unsettledReceivableAmount Decimal? @map("unsettled_receivable_amount") @db.Decimal(15,2); createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6); @@map("merchants") }
+model Terminal { id String @id @default(uuid()) @db.Uuid; tenantId String @map("tenant_id") @db.Uuid; merchantId String? @map("merchant_id") @db.Uuid; terminalType String @default("MERCHANT") @map("terminal_type") @db.VarChar(20); deviceId String @unique @map("device_id") @db.VarChar(80); deviceTokenHash String @map("device_token_hash"); lastHeartbeatAt DateTime? @map("last_heartbeat_at") @db.Timestamptz(6); firmwareVersion String? @map("firmware_version") @db.VarChar(20); mode String @default("STANDALONE") @db.VarChar(20); status String @default("ACTIVE") @db.VarChar(20); @@map("terminals") }
+model CardRegistrationSession { id String @id @default(uuid()) @db.Uuid; tenantId String @map("tenant_id") @db.Uuid; terminalId String @map("terminal_id") @db.Uuid; cardUid String @map("card_uid") @db.VarChar(40); santriId String? @map("santri_id") @db.Uuid; status String @default("SCANNED") @db.VarChar(20); createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6); expiresAt DateTime @map("expires_at") @db.Timestamptz(6); @@map("card_registration_sessions") }
+model Account { id String @id @default(uuid()) @db.Uuid; tenantId String @map("tenant_id") @db.Uuid; entityType String @map("entity_type") @db.VarChar(30); entityId String @map("entity_id") @db.Uuid; currency String @default("IDR") @db.VarChar(3); createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6); @@unique([tenantId,entityType,entityId]); @@map("accounts") }
+model LedgerEntry { id String @id @default(uuid()) @db.Uuid; tenantId String @map("tenant_id") @db.Uuid; journalId String @map("journal_id") @db.Uuid; accountId String @map("account_id") @db.Uuid; entryType String @map("entry_type") @db.VarChar(6); amount Decimal @db.Decimal(15,2); balanceSnapshot Decimal? @map("balance_snapshot") @db.Decimal(15,2); description String?; createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6); @@index([accountId,createdAt(sort:Desc)]); @@index([journalId]); @@map("ledger_entries") }
+model Transaction { id String @id @default(uuid()) @db.Uuid; tenantId String @map("tenant_id") @db.Uuid; journalId String @unique @map("journal_id") @db.Uuid; transactionType String @default("SALE") @map("transaction_type") @db.VarChar(30); cardId String? @map("card_id") @db.Uuid; santriId String? @map("santri_id") @db.Uuid; merchantId String? @map("merchant_id") @db.Uuid; terminalId String? @map("terminal_id") @db.Uuid; operatorId String? @map("operator_id") @db.Uuid; withdrawalReason String? @map("withdrawal_reason") @db.VarChar(50); amount Decimal @db.Decimal(15,2); status String @default("SUCCESS") @db.VarChar(20); idempotencyKey String @unique @map("idempotency_key") @db.VarChar(80); voidedBy String? @map("voided_by") @db.Uuid; voidedReason String? @map("voided_reason"); createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6); @@index([santriId,createdAt(sort:Desc)]); @@index([merchantId,transactionType,createdAt(sort:Desc)]); @@map("transactions") }
+model MerchantSettlementInvoice { id String @id @default(uuid()) @db.Uuid; tenantId String @map("tenant_id") @db.Uuid; merchantId String @map("merchant_id") @db.Uuid; periodStart DateTime @map("period_start") @db.Date; periodEnd DateTime @map("period_end") @db.Date; openingBalance Decimal @map("opening_balance") @db.Decimal(15,2); totalSales Decimal @default(0) @map("total_sales") @db.Decimal(15,2); totalWithdrawalsPaid Decimal @default(0) @map("total_withdrawals_paid") @db.Decimal(15,2); totalTopupCollected Decimal @default(0) @map("total_topup_collected") @db.Decimal(15,2); closingBalance Decimal @map("closing_balance") @db.Decimal(15,2); settlementAction String @default("PENDING") @map("settlement_action") @db.VarChar(20); status String @default("DRAFT") @db.VarChar(20); paidOutAmount Decimal? @map("paid_out_amount") @db.Decimal(15,2); paidOutJournalId String? @map("paid_out_journal_id") @db.Uuid; settledBy String? @map("settled_by") @db.Uuid; settledAt DateTime? @map("settled_at") @db.Timestamptz(6); @@unique([tenantId,merchantId,periodStart,periodEnd]); @@map("merchant_settlement_invoices") }
+
+model CardPinResetSession { id String @id @default(uuid()) @db.Uuid; tenantId String @map("tenant_id") @db.Uuid; terminalId String @map("terminal_id") @db.Uuid; cardId String @map("card_id") @db.Uuid; status String @default("SCANNED") @db.VarChar(30); confirmedBy String? @map("confirmed_by") @db.Uuid; createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6); expiresAt DateTime @map("expires_at") @db.Timestamptz(6); @@map("card_pin_reset_sessions") }
+
+model TopUpRequest { id String @id @default(uuid()) @db.Uuid; tenantId String @map("tenant_id") @db.Uuid; santriId String @map("santri_id") @db.Uuid; initiatedByType String @map("initiated_by_type") @db.VarChar(20); initiatedById String @map("initiated_by_id") @db.Uuid; amount Decimal @db.Decimal(15,2); channel String @db.VarChar(20); gatewayReference String? @map("gateway_reference") @db.VarChar(100); status String @default("PENDING") @db.VarChar(20); journalId String? @map("journal_id") @db.Uuid; createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6); settledAt DateTime? @map("settled_at") @db.Timestamptz(6); @@map("top_up_requests") }

@@ -1,0 +1,2 @@
+/** Every tenant uses Asia/Jakarta as the calendar boundary for daily spending limits. */
+export function jakartaDayStart(now:Date){const parts=new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Jakarta',year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(now);const value=(type:string)=>Number(parts.find(part=>part.type===type)?.value);return new Date(Date.UTC(value('year'),value('month')-1,value('day'))-7*60*60*1000);}

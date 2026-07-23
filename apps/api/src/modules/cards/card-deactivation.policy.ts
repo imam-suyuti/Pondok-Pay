@@ -1,0 +1,3 @@
+export interface CardClosureCalculation {feeCharged:number;refundAmount:number;}
+/** Implements §6.12 only; posting its result must be delegated to LedgerService. */
+export function calculateManualCardClosure(input:{balance:number;feePerCard:number;dayOfMonth:number;feeCutoffDay:number}):CardClosureCalculation {if(input.balance<0||input.dayOfMonth<input.feeCutoffDay)return {feeCharged:0,refundAmount:Math.max(input.balance,0)};if(input.balance>=input.feePerCard)return {feeCharged:input.feePerCard,refundAmount:input.balance-input.feePerCard};return {feeCharged:Math.max(input.balance,0),refundAmount:0};}
