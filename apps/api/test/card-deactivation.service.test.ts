@@ -1,3 +1,19 @@
-import {describe,expect,it} from 'vitest';import {CardDeactivationService,type CardDeactivationRepository} from '../src/modules/cards/card-deactivation.service.js';
-class Repo implements CardDeactivationRepository {inactive=false;journal?:unknown;async runSerializable<T>(f:()=>Promise<T>){return f()}async lockCard(){return {id:'card',tenantId:'tenant',santriId:'santri',status:'ACTIVE' as const}}async isAdminInTenant(){return true}async runningSantriBalance(){return 5000}async cardFee(){return 2000}async manualFeeCutoffDay(){return 12}async postClosureJournals(i:unknown){this.journal=i}async markInactive(){this.inactive=true}async appendAudit(){}}
-describe('manual card deactivation orchestration',()=>{it('posts calculated closure journals before card status becomes inactive',async()=>{const repo=new Repo();expect(await new CardDeactivationService(repo).deactivate('card','staff',12)).toEqual({feeCharged:2000,refundAmount:3000});expect(repo.journal).toMatchObject({feeCharged:2000,refundAmount:3000});expect(repo.inactive).toBe(true);});});
+import { describe, expect, it } from 'vitest';
+import { CardDeactivationService, type CardDeactivationLedgerPort } from '../src/modules/cards/card-deactivation.service.js';
+
+class Ledger implements CardDeactivationLedgerPort {
+  command?: unknown;
+  async deactivateCardManual(input: unknown) {
+    this.command = input;
+    return { feeCharged: 2000, refundAmount: 3000 };
+  }
+}
+
+describe('manual card deactivation facade', () => {
+  it('delegates the full command to LedgerService so ledger_entries stay single-writer', async () => {
+    const ledger = new Ledger();
+    const result = await new CardDeactivationService(ledger).deactivate('tenant', 'card', 'staff', 12);
+    expect(result).toEqual({ feeCharged: 2000, refundAmount: 3000 });
+    expect(ledger.command).toEqual({ tenantId: 'tenant', cardId: 'card', staffId: 'staff', dayOfMonth: 12 });
+  });
+});

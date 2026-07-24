@@ -1,3 +1,31 @@
-import {describe,expect,it} from 'vitest';import {SantriExitService,type SantriExitRepository} from '../src/modules/santri/santri-exit.service.js';
-class Repo implements SantriExitRepository {inactive=false;revoked=false;audit?:unknown;calls:string[]=[];async runSerializable<T>(fn:()=>Promise<T>){this.calls.push('begin');const out=await fn();this.calls.push('commit');return out}async activeCardIds(){return ['card-1','card-2']}async deactivateCardManual(id:string){this.calls.push(`close:${id}`);return {feeCharged:0,refundAmount:100}}async markSantriInactive(){this.inactive=true;this.calls.push('inactive')}async revokeWaliRelations(){this.revoked=true;this.calls.push('revoke')}async appendAudit(input:unknown){this.audit=input}}
-describe('santri exit workflow',()=>{it('closes every active card, revokes wali access and inactivates santri in one transaction',async()=>{const repo=new Repo();const result=await new SantriExitService(repo).deactivateSantriExit('santri','staff','GRADUATED');expect(result.cardsDeactivated).toHaveLength(2);expect(repo.inactive).toBe(true);expect(repo.revoked).toBe(true);expect(repo.calls).toEqual(['begin','close:card-1','close:card-2','inactive','revoke','commit']);expect(repo.audit).toMatchObject({cardsDeactivated:2,reason:'GRADUATED'});});});
+import { describe, expect, it } from 'vitest';
+import { SantriExitService, type SantriExitLedgerPort } from '../src/modules/santri/santri-exit.service.js';
+
+class Ledger implements SantriExitLedgerPort {
+  command?: unknown;
+  async deactivateSantriExit(input: unknown) {
+    this.command = input;
+    return { cardsDeactivated: [{ feeCharged: 0, refundAmount: 100 }] };
+  }
+}
+
+describe('santri exit workflow facade', () => {
+  it('delegates the atomic card/santri/wali operation to LedgerService', async () => {
+    const ledger = new Ledger();
+    const result = await new SantriExitService(ledger).deactivateSantriExit(
+      'tenant',
+      'santri',
+      'staff',
+      'GRADUATED',
+      12,
+    );
+    expect(result.cardsDeactivated).toHaveLength(1);
+    expect(ledger.command).toEqual({
+      tenantId: 'tenant',
+      santriId: 'santri',
+      staffId: 'staff',
+      reason: 'GRADUATED',
+      dayOfMonth: 12,
+    });
+  });
+});

@@ -1,3 +1,22 @@
-import {describe,expect,it} from 'vitest';import {MerchantDeactivationService,type MerchantDeactivationRepository} from '../src/modules/merchants/merchant-deactivation.service.js';
-class Repo implements MerchantDeactivationRepository {balance=-60000;journal=false;inactive?:unknown;async runSerializable<T>(f:()=>Promise<T>){return f()}async lockMerchant(){return {id:'merchant',tenantId:'tenant',status:'ACTIVE' as const}}async isAdminInTenant(){return true}async runningMerchantBalance(){return this.balance}async merchantFee(){return 25000}async manualFeeCutoffDay(){return 12}async writeoffThreshold(){return 50000}async postClosureJournals(){this.journal=true}async markInactive(i:unknown){this.inactive=i}async appendAudit(){}}
-describe('merchant deactivation orchestration',()=>{it('does not write off a receivable above threshold or post closure journals',async()=>{const repo=new Repo();expect(await new MerchantDeactivationService(repo).deactivate('merchant','staff',20)).toMatchObject({unsettledReceivable:60000});expect(repo.journal).toBe(false);expect(repo.inactive).toEqual({merchantId:'merchant',unsettledReceivable:60000});});});
+import { describe, expect, it } from 'vitest';
+import {
+  MerchantDeactivationService,
+  type MerchantDeactivationLedgerPort,
+} from '../src/modules/merchants/merchant-deactivation.service.js';
+
+class Ledger implements MerchantDeactivationLedgerPort {
+  command?: unknown;
+  async deactivateMerchantManual(input: unknown) {
+    this.command = input;
+    return { feeCharged: 0, settleAmount: 0, unsettledReceivable: 60000 };
+  }
+}
+
+describe('merchant deactivation facade', () => {
+  it('delegates deactivation to LedgerService, including tenant and staff context', async () => {
+    const ledger = new Ledger();
+    const result = await new MerchantDeactivationService(ledger).deactivate('tenant', 'merchant', 'staff', 20);
+    expect(result).toMatchObject({ unsettledReceivable: 60000 });
+    expect(ledger.command).toEqual({ tenantId: 'tenant', merchantId: 'merchant', staffId: 'staff', dayOfMonth: 20 });
+  });
+});

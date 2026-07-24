@@ -1,3 +1,32 @@
-import {describe,expect,it} from 'vitest';import {SettlementPayoutError,SettlementPayoutService,type SettlementPayoutRepository} from '../src/modules/settlements/settlement-payout.service.js';
-class Repo implements SettlementPayoutRepository {invoice={id:'invoice',tenantId:'tenant',merchantId:'merchant',closingBalance:50000,status:'ISSUED' as const};paid?:unknown;audit:unknown[]=[];async runSerializable<T>(fn:()=>Promise<T>){return fn()}async lockInvoice(){return this.invoice}async isAdminInTenant(){return true}async postPayoutJournal(){return {journalId:'journal'}}async markPaidOut(...x:unknown[]){this.paid=x}async appendAudit(x:unknown){this.audit.push(x)}}
-describe('merchant settlement payout',()=>{it('only pays a positive issued balance through a ledger journal',async()=>{const repo=new Repo();expect(await new SettlementPayoutService(repo).payout('invoice','staff',50000)).toEqual({journalId:'journal'});expect(repo.paid).toEqual(['invoice','staff',50000,'journal']);expect(repo.audit).toHaveLength(1);});it('does not allow a payout above invoice closing balance',async()=>await expect(new SettlementPayoutService(new Repo()).payout('invoice','staff',50001)).rejects.toBeInstanceOf(SettlementPayoutError));});
+import { describe, expect, it } from 'vitest';
+import {
+  SettlementPayoutService,
+  type SettlementPayoutCommand,
+  type SettlementPayoutLedgerPort,
+} from '../src/modules/settlements/settlement-payout.service.js';
+
+class Ledger implements SettlementPayoutLedgerPort {
+  command?: SettlementPayoutCommand;
+
+  async payoutSettlementInvoice(command: SettlementPayoutCommand) {
+    this.command = command;
+    return { journalId: 'journal' };
+  }
+}
+
+describe('merchant settlement payout', () => {
+  it('delegates the full payout command to LedgerService as the sole financial writer', async () => {
+    const ledger = new Ledger();
+    const service = new SettlementPayoutService(ledger);
+    const command = {
+      tenantId: 'tenant',
+      merchantId: 'merchant',
+      invoiceId: 'invoice',
+      staffId: 'staff',
+      amount: 50000,
+    };
+
+    await expect(service.payout(command)).resolves.toEqual({ journalId: 'journal' });
+    expect(ledger.command).toEqual(command);
+  });
+});

@@ -1,5 +1,20 @@
-import {calculateManualMerchantClosure} from './merchant-deactivation.policy.js';
-export interface MerchantClosureRecord {id:string;tenantId:string;status:'ACTIVE'|'INACTIVE';}
-export interface MerchantDeactivationRepository {runSerializable<T>(work:()=>Promise<T>):Promise<T>;lockMerchant(id:string):Promise<MerchantClosureRecord|undefined>;isAdminInTenant(staffId:string,tenantId:string):Promise<boolean>;runningMerchantBalance(tenantId:string,merchantId:string):Promise<number>;merchantFee(tenantId:string):Promise<number>;manualFeeCutoffDay():Promise<number>;writeoffThreshold():Promise<number>;postClosureJournals(input:{tenantId:string;merchantId:string;feeCharged:number;settleAmount:number;staffId:string}):Promise<void>;markInactive(input:{merchantId:string;unsettledReceivable:number}):Promise<void>;appendAudit(input:{tenantId:string;staffId:string;action:'MERCHANT_DEACTIVATED_MANUAL'|'MERCHANT_DEACTIVATED_WITH_RECEIVABLE';resourceId:string;metadata:Record<string,unknown>}):Promise<void>;}
-export class MerchantDeactivationError extends Error {constructor(public readonly code:'FORBIDDEN'|'MERCHANT_ALREADY_INACTIVE',message:string){super(message);}}
-export class MerchantDeactivationService {constructor(private readonly repository:MerchantDeactivationRepository){}async deactivate(merchantId:string,staffId:string,dayOfMonth:number){return this.repository.runSerializable(async()=>{const merchant=await this.repository.lockMerchant(merchantId);if(!merchant||merchant.status!=='ACTIVE')throw new MerchantDeactivationError('MERCHANT_ALREADY_INACTIVE','Merchant sudah tidak aktif.');if(!await this.repository.isAdminInTenant(staffId,merchant.tenantId))throw new MerchantDeactivationError('FORBIDDEN','Anda tidak memiliki akses.');const result=calculateManualMerchantClosure({balance:await this.repository.runningMerchantBalance(merchant.tenantId,merchant.id),feePerMerchant:await this.repository.merchantFee(merchant.tenantId),dayOfMonth,feeCutoffDay:await this.repository.manualFeeCutoffDay(),writeoffThreshold:await this.repository.writeoffThreshold()});if(result.unsettledReceivable===0)await this.repository.postClosureJournals({tenantId:merchant.tenantId,merchantId:merchant.id,feeCharged:result.feeCharged,settleAmount:result.settleAmount,staffId});await this.repository.markInactive({merchantId:merchant.id,unsettledReceivable:result.unsettledReceivable});await this.repository.appendAudit({tenantId:merchant.tenantId,staffId,action:result.unsettledReceivable>0?'MERCHANT_DEACTIVATED_WITH_RECEIVABLE':'MERCHANT_DEACTIVATED_MANUAL',resourceId:merchant.id,metadata:{...result}});return result;});}}
+export interface MerchantDeactivationLedgerPort {
+  deactivateMerchantManual(input: {
+    tenantId: string;
+    merchantId: string;
+    staffId: string;
+    dayOfMonth: number;
+  }): Promise<{ feeCharged: number; settleAmount: number; unsettledReceivable: number }>;
+}
+
+/**
+ * Merchant module owns the use-case boundary; LedgerService owns all financial
+ * posting and the atomic status/receivable update.
+ */
+export class MerchantDeactivationService {
+  constructor(private readonly ledger: MerchantDeactivationLedgerPort) {}
+
+  async deactivate(tenantId: string, merchantId: string, staffId: string, dayOfMonth: number) {
+    return this.ledger.deactivateMerchantManual({ tenantId, merchantId, staffId, dayOfMonth });
+  }
+}
