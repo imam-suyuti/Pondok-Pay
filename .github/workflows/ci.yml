@@ -1,19 +1,16 @@
 name: CI
-
 on:
   pull_request:
   push:
     branches:
       - main
-      - arena/019f8572-pondok-pay
-
+      - 'arena/**'
 permissions:
   contents: read
-
 jobs:
   quality:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     services:
       postgres:
         image: postgres:15-alpine
@@ -34,18 +31,22 @@ jobs:
           --health-cmd "redis-cli ping"
           --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # actions/*@v5 targets the current GitHub Actions runtime and avoids the Node.js 20 deprecation warning.
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: npm
       - run: npm ci
-      # Prisma client generation is intentionally explicit; deployment migrations remain separate.
       - run: npx prisma generate --schema apps/api/prisma/schema.prisma
+      - run: npm run lint
       - run: npm test
         env:
+          NODE_ENV: test
           RUN_DB_INTEGRATION: '1'
           DATABASE_URL: postgresql://postgres:postgres@localhost:5432/pondokpay_test
           REDIS_URL: redis://localhost:6379
           RUN_REDIS_INTEGRATION: '1'
-      - run: npm run build --workspaces
+          JWT_ACCESS_SECRET: 01234567890123456789012345678901
+          JWT_REFRESH_SECRET: 01234567890123456789012345678901
+      - run: npm run build
