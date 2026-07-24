@@ -11,6 +11,8 @@ model Tenant {
  slug String @unique @db.VarChar(60)
  status TenantStatus @default(ACTIVE)
  subscriptionPlan String @default("BASIC") @map("subscription_plan") @db.VarChar(30)
+ cardFeeMonthly Decimal? @map("card_fee_monthly") @db.Decimal(15,2)
+ merchantFeeMonthly Decimal? @map("merchant_fee_monthly") @db.Decimal(15,2)
  defaultDailyLimit Decimal @default(50000) @map("default_daily_limit") @db.Decimal(15,2)
  cashTopupLimitPerTx Decimal @default(500000) @map("cash_topup_limit_per_tx") @db.Decimal(15,2)
  cashWithdrawalLimitPerTx Decimal @default(200000) @map("cash_withdrawal_limit_per_tx") @db.Decimal(15,2)
@@ -19,6 +21,7 @@ model Tenant {
  staffUsers StaffUser[]
  santri Santri[]
  auditLogs AuditLog[]
+ platformFeeInvoices PlatformFeeInvoice[]
  @@map("tenants")
 }
 model StaffUser {
@@ -36,6 +39,7 @@ model StaffUser {
  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
  tenant Tenant? @relation(fields:[tenantId], references:[id])
  refreshTokens RefreshToken[]
+ updatedBillingConfigs PlatformBillingConfig[]
  @@map("staff_users")
 }
 model WaliSantri {
@@ -50,7 +54,7 @@ model WaliSantri {
  refreshTokens RefreshToken[]
  @@map("wali_santri")
 }
-model Santri { id String @id @default(uuid()) @db.Uuid; tenantId String @map("tenant_id") @db.Uuid; fullName String @map("full_name") @db.VarChar(150); nis String? @db.VarChar(30); dormitory String? @db.VarChar(60); status UserStatus @default(ACTIVE); tenant Tenant @relation(fields:[tenantId], references:[id]); waliRelations WaliSantriRelation[]; @@map("santri") }
+model Santri { id String @id @default(uuid()) @db.Uuid; tenantId String @map("tenant_id") @db.Uuid; fullName String @map("full_name") @db.VarChar(150); nis String? @db.VarChar(30); dormitory String? @db.VarChar(60); dailySpendLimit Decimal? @map("daily_spend_limit") @db.Decimal(15,2); status UserStatus @default(ACTIVE); exitReason String? @map("exit_reason") @db.VarChar(30); exitedAt DateTime? @map("exited_at") @db.Timestamptz(6); tenant Tenant @relation(fields:[tenantId], references:[id]); waliRelations WaliSantriRelation[]; @@map("santri") }
 model WaliSantriRelation { waliId String @map("wali_id") @db.Uuid; santriId String @unique @map("santri_id") @db.Uuid; relationType String @default("PARENT") @map("relation_type"); status RelationStatus @default(ACTIVE); wali WaliSantri @relation(fields:[waliId],references:[id]); santri Santri @relation(fields:[santriId],references:[id]); @@id([waliId,santriId]); @@map("wali_santri_relations") }
 model RolePermission { id String @id @default(uuid()) @db.Uuid; role String @db.VarChar(30); resource String @db.VarChar(60); scope String @default("FULL") @db.VarChar(20); constraintJson Json? @map("constraint_json"); @@unique([role,resource]); @@map("role_permissions") }
 model RefreshToken { id String @id @default(uuid()) @db.Uuid; tokenHash String @unique @map("token_hash"); staffUserId String? @map("staff_user_id") @db.Uuid; waliSantriId String? @map("wali_santri_id") @db.Uuid; expiresAt DateTime @map("expires_at") @db.Timestamptz(6); revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6); replacedById String? @map("replaced_by_id") @db.Uuid; createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6); staffUser StaffUser? @relation(fields:[staffUserId],references:[id]); waliSantri WaliSantri? @relation(fields:[waliSantriId],references:[id]); @@map("refresh_tokens") }
@@ -69,3 +73,6 @@ model MerchantSettlementInvoice { id String @id @default(uuid()) @db.Uuid; tenan
 model CardPinResetSession { id String @id @default(uuid()) @db.Uuid; tenantId String @map("tenant_id") @db.Uuid; terminalId String @map("terminal_id") @db.Uuid; cardId String @map("card_id") @db.Uuid; status String @default("SCANNED") @db.VarChar(30); confirmedBy String? @map("confirmed_by") @db.Uuid; createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6); expiresAt DateTime @map("expires_at") @db.Timestamptz(6); @@map("card_pin_reset_sessions") }
 
 model TopUpRequest { id String @id @default(uuid()) @db.Uuid; tenantId String @map("tenant_id") @db.Uuid; santriId String @map("santri_id") @db.Uuid; initiatedByType String @map("initiated_by_type") @db.VarChar(20); initiatedById String @map("initiated_by_id") @db.Uuid; amount Decimal @db.Decimal(15,2); channel String @db.VarChar(20); gatewayReference String? @map("gateway_reference") @db.VarChar(100); status String @default("PENDING") @db.VarChar(20); journalId String? @map("journal_id") @db.Uuid; createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6); settledAt DateTime? @map("settled_at") @db.Timestamptz(6); @@map("top_up_requests") }
+
+model PlatformBillingConfig { id String @id @default(uuid()) @db.Uuid; defaultCardFeeMonthly Decimal @default(2000) @map("default_card_fee_monthly") @db.Decimal(15,2); defaultMerchantFeeMonthly Decimal @default(25000) @map("default_merchant_fee_monthly") @db.Decimal(15,2); cardFeeDebitDay Int @default(1) @map("card_fee_debit_day"); merchantFeeDebitDay Int @default(1) @map("merchant_fee_debit_day"); paymentDeadlineDays Int @default(7) @map("payment_deadline_days"); maxConsecutiveNegativeDebits Int @default(2) @map("max_consecutive_negative_debits"); manualDeactivationFeeCutoffDay Int @default(12) @map("manual_deactivation_fee_cutoff_day"); merchantDeactivationWriteoffThreshold Decimal @default(50000) @map("merchant_deactivation_writeoff_threshold") @db.Decimal(15,2); updatedAt DateTime @default(now()) @map("updated_at") @db.Timestamptz(6); updatedBy String? @map("updated_by") @db.Uuid; updatedByStaff StaffUser? @relation(fields:[updatedBy], references:[id]); @@map("platform_billing_config") }
+model PlatformFeeInvoice { id String @id @default(uuid()) @db.Uuid; tenantId String @map("tenant_id") @db.Uuid; periodYear Int @map("period_year"); periodMonth Int @map("period_month"); activeCardCount Int @map("active_card_count"); cardFeePerUnit Decimal @map("card_fee_per_unit") @db.Decimal(15,2); totalCardFeeAmount Decimal @map("total_card_fee_amount") @db.Decimal(15,2); activeMerchantCount Int @map("active_merchant_count"); merchantFeePerUnit Decimal @map("merchant_fee_per_unit") @db.Decimal(15,2); totalMerchantFeeAmount Decimal @map("total_merchant_fee_amount") @db.Decimal(15,2); totalAmount Decimal @map("total_amount") @db.Decimal(15,2); dueDate DateTime @map("due_date") @db.Date; status String @default("PENDING") @db.VarChar(20); paymentReference String? @map("payment_reference") @db.VarChar(100); paidAt DateTime? @map("paid_at") @db.Timestamptz(6); createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6); tenant Tenant @relation(fields:[tenantId], references:[id]); @@unique([tenantId,periodYear,periodMonth]); @@map("platform_fee_invoices") }

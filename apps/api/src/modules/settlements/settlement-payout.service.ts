@@ -1,5 +1,23 @@
-export interface PayoutInvoice {id:string;tenantId:string;merchantId:string;closingBalance:number;status:'ISSUED'|'SETTLED';}
-export interface SettlementPayoutRepository {runSerializable<T>(work:()=>Promise<T>):Promise<T>;lockInvoice(invoiceId:string):Promise<PayoutInvoice|undefined>;isAdminInTenant(staffId:string,tenantId:string):Promise<boolean>;postPayoutJournal(input:{tenantId:string;merchantId:string;amount:number;staffId:string}):Promise<{journalId:string}>;markPaidOut(invoiceId:string,staffId:string,amount:number,journalId:string):Promise<void>;appendAudit(input:{tenantId:string;staffId:string;action:'SETTLEMENT_PAYOUT';resourceId:string;metadata:Record<string,unknown>}):Promise<void>;}
-export class SettlementPayoutError extends Error {constructor(public readonly code:'FORBIDDEN'|'VALIDATION_ERROR',message:string){super(message);}}
-/** postPayoutJournal must be implemented by LedgerService infrastructure; settlement itself does not write ledger entries. */
-export class SettlementPayoutService {constructor(private readonly repository:SettlementPayoutRepository){}async payout(invoiceId:string,staffId:string,amount:number){if(!Number.isSafeInteger(amount)||amount<=0)throw new SettlementPayoutError('VALIDATION_ERROR','Nominal pencairan harus Rupiah bulat positif.');return this.repository.runSerializable(async()=>{const invoice=await this.repository.lockInvoice(invoiceId);if(!invoice||invoice.status!=='ISSUED'||invoice.closingBalance<=0)throw new SettlementPayoutError('VALIDATION_ERROR','Tidak ada saldo settlement yang dapat dicairkan.');if(amount>invoice.closingBalance)throw new SettlementPayoutError('VALIDATION_ERROR','Nominal pencairan melebihi saldo settlement.');if(!await this.repository.isAdminInTenant(staffId,invoice.tenantId))throw new SettlementPayoutError('FORBIDDEN','Anda tidak memiliki akses.');const {journalId}=await this.repository.postPayoutJournal({tenantId:invoice.tenantId,merchantId:invoice.merchantId,amount,staffId});await this.repository.markPaidOut(invoice.id,staffId,amount,journalId);await this.repository.appendAudit({tenantId:invoice.tenantId,staffId,action:'SETTLEMENT_PAYOUT',resourceId:journalId,metadata:{invoiceId:invoice.id,amount}});return {journalId};});}}
+export interface SettlementPayoutCommand {
+  tenantId: string;
+  merchantId: string;
+  invoiceId: string;
+  staffId: string;
+  amount: number;
+}
+
+/**
+ * Settlement owns the use-case boundary; LedgerService owns the complete
+ * SERIALIZABLE transaction and is the only writer of ledger_entries.
+ */
+export interface SettlementPayoutLedgerPort {
+  payoutSettlementInvoice(command: SettlementPayoutCommand): Promise<{ journalId: string }>;
+}
+
+export class SettlementPayoutService {
+  constructor(private readonly ledger: SettlementPayoutLedgerPort) {}
+
+  async payout(command: SettlementPayoutCommand) {
+    return this.ledger.payoutSettlementInvoice(command);
+  }
+}
